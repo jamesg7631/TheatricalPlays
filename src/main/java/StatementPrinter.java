@@ -1,50 +1,120 @@
 import java.text.NumberFormat;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 public class StatementPrinter {
 
-    public String print(Invoice invoice, Map<String, Play> plays) {
-        var totalAmount = 0;
-        var volumeCredits = 0;
-        var result = String.format("Statement for %s\n", invoice.getCustomer());
+    // Should I have enums for the different play types
 
-        NumberFormat frmt = NumberFormat.getCurrencyInstance(Locale.US);
+    // The current print method breaks Single responsibility principle. Highly coupled since it is performing many tasks such as
+    // calculating the amount and credits earned instead of just printing them out
+    private class StatementEntry {
+        private String playName;
+        private int amount;
+        private int numberOfSeats;
 
-        for (var perf : invoice.getPerformances()) {
-            var play = plays.get(perf.getPlayID());
-            var thisAmount = 0;
-
-            switch (play.getType()) {
-                case "tragedy":
-                    thisAmount = 40000;
-                    if (perf.getAudience() > 30) {
-                        thisAmount += 1000 * (perf.getAudience() - 30);
-                    }
-                    break;
-                case "comedy":
-                    thisAmount = 30000;
-                    if (perf.getAudience() > 20) {
-                        thisAmount += 10000 + 500 * (perf.getAudience() - 20);
-                    }
-                    thisAmount += 300 * perf.getAudience();
-                    break;
-                default:
-                    throw new Error("unknown type: ${play.type}");
-            }
-
-            // add volume credits
-            volumeCredits += Math.max(perf.getAudience() - 30, 0);
-            // add extra credit for every ten comedy attendees
-            if ("comedy".equals(play.getType())) volumeCredits += Math.floor(perf.getAudience() / 5); // No longer uses play.type but instead used the getter. No longer relies on internal details of the class
-
-            // print line for this order
-            result += String.format("  %s: %s (%s seats)\n", play.getName(), frmt.format(thisAmount / 100), perf.getAudience());
-            totalAmount += thisAmount;
+        public StatementEntry(String playName, int amount, int numberOfSeats) {
+            this.playName = playName;
+            this.amount = amount;
+            this.numberOfSeats = numberOfSeats;
         }
-        result += String.format("Amount owed is %s\n", frmt.format(totalAmount / 100));
-        result += String.format("You earned %s credits\n", volumeCredits);
-        return result;
+
+        public int getAmount() {
+            return this.amount;
+        }
+
+        public String toString() {
+            // Need to fix the coupling with local
+            NumberFormat frmt = NumberFormat.getCurrencyInstance(Locale.US);
+            return String.format("  %s: %s (%s seats)\n", playName, frmt.format(amount / 100), numberOfSeats);
+        }
     }
 
+    private String moneyFormatter(int amount) {
+        NumberFormat frmt = NumberFormat.getCurrencyInstance(Locale.US);
+        return frmt.format(amount / 100);
+    }
+
+    public String print(Invoice invoice, Map<String, Play> plays) {
+        StringBuilder output = new StringBuilder();
+        output.append(String.format("Statement for %s\n", invoice.getCustomer()));
+        List<StatementEntry> statementEntryList = createStatements(invoice, plays);
+        int totalAmount = calculateTotalAmount(statementEntryList);
+        int totalCredits = calculateListCredits(invoice, plays);
+
+        for (StatementEntry statementEntry: statementEntryList) {
+            output.append(statementEntry);
+        }
+        output.append(String.format("Amount owed is %s\n", moneyFormatter(totalAmount)));
+        output.append(String.format("You earned %s credits\n", totalCredits));
+
+        return output.toString();
+    }
+
+    private int calculateTotalAmount(List<StatementEntry> statementEntries) {
+        int total = 0;
+        for (StatementEntry statementEntry: statementEntries) {
+            total += statementEntry.getAmount();
+        }
+        return total;
+    }
+
+    private int calculateListCredits(Invoice invoice, Map<String, Play> plays) {
+        int total = 0;
+        for (Performance performance: invoice.getPerformances()) {
+            Play play = plays.get(performance.getPlayID());
+            total += calculateCredits(play.getType(), performance.getAudience());
+        }
+        return total;
+    }
+
+    private int calculateCredits(String playType, int audienceSize) {
+        int volumeCredits = Math.max(audienceSize - 30, 0);
+        if ("comedy".equals(playType)) {
+            volumeCredits += Math.floor(audienceSize / 5);
+        }
+        return volumeCredits;
+    }
+
+    private List<StatementEntry> createStatements(Invoice invoice, Map<String, Play> plays) {
+        List<StatementEntry> statementEntryList = new ArrayList<>();
+        for (Performance performance: invoice.getPerformances()) {
+            Play play = plays.get(performance.getPlayID());
+            StatementEntry statementEntry = createStatement(performance, play);
+            statementEntryList.add(statementEntry);
+        }
+        return statementEntryList;
+    }
+
+    private StatementEntry createStatement(Performance performance, Play play) {
+
+        return new StatementEntry(play.getName(), amount(play.getType(), performance.getAudience()), performance.getAudience());
+    }
+
+    private int amount(String playType, int audienceSize) {
+        int amount = 0;
+        int audienceBonusSizeQualifier;
+        switch (playType) {
+            case "tragedy":
+                audienceBonusSizeQualifier = 30;
+                amount = 40000;
+                if (audienceSize > audienceBonusSizeQualifier) {
+                    amount += 1000 * (audienceSize - audienceBonusSizeQualifier);
+                }
+                break;
+            case "comedy":
+                amount = 30000;
+                audienceBonusSizeQualifier = 20;
+                if (audienceSize > audienceBonusSizeQualifier) {
+                    amount += 10000 + 500 * (audienceSize- audienceBonusSizeQualifier);
+                }
+                amount += 300 * audienceSize;
+                break;
+            default:
+                throw new Error("unknown type: ${play.type}");
+        }
+        return amount;
+    }
 }

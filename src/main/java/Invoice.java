@@ -11,6 +11,10 @@ public class Invoice {
     // performances List cannot be changed. Neither instances of Performance objects in the list.
     // This refactoring is an example of Safe classes I think. Not sure though. I don't think this is an example of
     // coupling or cohesion though.
+
+    // Ahh, Invoice doesn't have access to Plays though, this is a problem.
+    // Might be a good idea to have a StatementCalculator class.
+    // For now, keep everything in StatementPrinter but separate into distinct methods
     private String customer;
     private List<Performance> performances;
 
